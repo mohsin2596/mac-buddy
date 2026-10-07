@@ -5,3 +5,5 @@ build/
 .swiftpm/
 xcuserdata/
 .claude/settings.local.json
+dist/
+launch/

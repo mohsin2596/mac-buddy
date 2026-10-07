@@ -58,8 +58,7 @@ final class BuddyModel: ObservableObject {
     private var newestStopSeen = Date.distantPast
     private var doneUntil = Date.distantPast
 
-    private let sessionsDir = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".mac-buddy/sessions")
+    private let sessionsDir = ClaudeHooks.sessionsDir
 
     init(settings: BuddySettings) {
         self.settings = settings

@@ -1,6 +1,7 @@
 import ServiceManagement
 import SwiftUI
 
+@MainActor
 struct SettingsView: View {
     @ObservedObject var settings: BuddySettings
     @ObservedObject var model: BuddyModel
@@ -38,6 +39,7 @@ struct SettingsView: View {
 
 // MARK: - Live preview
 
+@MainActor
 private struct PreviewPane: View {
     @ObservedObject var settings: BuddySettings
     @State private var mood: Mood = .idle
@@ -113,6 +115,7 @@ private struct PreviewPane: View {
 
 // MARK: - Tabs
 
+@MainActor
 private struct AppearanceTab: View {
     @ObservedObject var settings: BuddySettings
 
@@ -169,6 +172,7 @@ private struct AppearanceTab: View {
     }
 }
 
+@MainActor
 private struct BehaviorTab: View {
     @ObservedObject var settings: BuddySettings
     let onResetPosition: () -> Void
@@ -234,9 +238,12 @@ private struct BehaviorTab: View {
     }
 }
 
+@MainActor
 private struct ClaudeTab: View {
     @ObservedObject var settings: BuddySettings
     @ObservedObject var model: BuddyModel
+    @State private var connected = ClaudeHooks.isConnected
+    @State private var hookError: String?
 
     var body: some View {
         Form {
@@ -262,20 +269,31 @@ private struct ClaudeTab: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
 
-            Section("Hooks") {
-                LabeledContent("Claude Code hooks") {
-                    if hooksInstalled {
-                        Label("Installed", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+            Section {
+                LabeledContent("Claude Code") {
+                    if connected {
+                        Label("Connected", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
                     } else {
-                        Label("Not installed — run install.sh", systemImage: "xmark.circle.fill")
-                            .foregroundStyle(.red)
+                        Label("Not connected", systemImage: "xmark.circle.fill").foregroundStyle(.red)
                     }
                 }
-                Button("Show Hook Script in Finder") {
-                    let url = FileManager.default.homeDirectoryForCurrentUser
-                        .appendingPathComponent(".mac-buddy/hook.sh")
-                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                Button(connected ? "Disconnect from Claude Code" : "Connect to Claude Code") {
+                    do {
+                        if connected { try ClaudeHooks.disconnect() } else { try ClaudeHooks.connect() }
+                        hookError = nil
+                    } catch {
+                        hookError = error.localizedDescription
+                    }
+                    connected = ClaudeHooks.isConnected
                 }
+                if let hookError {
+                    Text(hookError).font(.caption).foregroundStyle(.red)
+                }
+            } header: {
+                Text("Connection")
+            } footer: {
+                Text("Adds or removes Mac Buddy's hooks in ~/.claude/settings.json. Restart open Claude Code sessions afterwards.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -291,18 +309,13 @@ private struct ClaudeTab: View {
         case .idle: return "Idle"
         }
     }
-
-    private var hooksInstalled: Bool {
-        let url = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".claude/settings.json")
-        let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
-        return text.contains(".mac-buddy/hook.sh")
-    }
 }
 
 // MARK: - Helpers
 
-private let percent: (Double) -> String = { "\(Int(($0 * 100).rounded()))%" }
+private func percent(_ value: Double) -> String { "\(Int((value * 100).rounded()))%" }
 
+@MainActor
 private struct SliderRow: View {
     let title: String
     @Binding var value: Double

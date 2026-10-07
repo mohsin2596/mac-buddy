@@ -96,6 +96,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 MainActor.assumeIsolated { self?.tick() }
             },
         ]
+
+        if ClaudeHooks.isConnected {
+            try? ClaudeHooks.writeShim()   // keeps hooks working if the app was moved
+        } else if !UserDefaults.standard.bool(forKey: askedToConnectKey) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.offerToConnect() }
+        }
+    }
+
+    // MARK: Claude Code connection
+
+    private let askedToConnectKey = "askedToConnect"
+
+    /// First-launch prompt: wire up Claude Code hooks with one click.
+    private func offerToConnect() {
+        UserDefaults.standard.set(true, forKey: askedToConnectKey)
+        let alert = NSAlert()
+        alert.messageText = "Connect Mac Buddy to Claude Code?"
+        alert.informativeText = """
+        Mac Buddy adds a few hooks to ~/.claude/settings.json so it can see when Claude is working. \
+        Your existing settings are kept and a backup is saved next to the file.
+
+        Restart any Claude Code sessions that are already open afterwards.
+        """
+        alert.icon = buddyIcon()
+        alert.addButton(withTitle: "Connect")
+        alert.addButton(withTitle: "Not Now")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn { connectClaude() }
+    }
+
+    @objc func connectClaude() {
+        do {
+            try ClaudeHooks.connect()
+            model.poke()
+        } catch {
+            showError("Couldn't connect to Claude Code", error)
+        }
+    }
+
+    @objc func disconnectClaude() {
+        do {
+            try ClaudeHooks.disconnect()
+        } catch {
+            showError("Couldn't disconnect from Claude Code", error)
+        }
+    }
+
+    private func showError(_ title: String, _ error: Error) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = error.localizedDescription
+        alert.alertStyle = .warning
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
+    private func buddyIcon() -> NSImage? {
+        let renderer = ImageRenderer(content: CharacterView(mood: .idle, t: 1.3, reaction: nil,
+                                                            style: settings.style(look: nil)))
+        renderer.scale = 2
+        return renderer.nsImage
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -214,6 +275,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: ",").target = self
         menu.addItem(withTitle: "Reset Position", action: #selector(resetPosition), keyEquivalent: "").target = self
         menu.addItem(.separator())
+        if ClaudeHooks.isConnected {
+            menu.addItem(withTitle: "Disconnect from Claude Code", action: #selector(disconnectClaude), keyEquivalent: "")
+                .target = self
+        } else {
+            menu.addItem(withTitle: "Connect to Claude Code", action: #selector(connectClaude), keyEquivalent: "")
+                .target = self
+        }
         menu.addItem(withTitle: "Quit Mac Buddy", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "")
         return menu
     }
@@ -257,6 +325,28 @@ enum MacBuddyApp {
     @MainActor static let delegate = AppDelegate()
 
     @MainActor static func main() {
+        // Command-line modes, used by the hook shim and the install scripts.
+        let args = CommandLine.arguments.dropFirst()
+        if args.contains("--hook") {
+            ClaudeHooks.handleEvent(FileHandle.standardInput.readDataToEndOfFile())
+            exit(0)
+        }
+        if args.contains("--connect") || args.contains("--disconnect") {
+            do {
+                if args.contains("--connect") {
+                    try ClaudeHooks.connect()
+                    print("Mac Buddy is connected to Claude Code (\(ClaudeHooks.settingsURL.path)).")
+                } else {
+                    try ClaudeHooks.disconnect()
+                    print("Mac Buddy's hooks were removed from \(ClaudeHooks.settingsURL.path).")
+                }
+                exit(0)
+            } catch {
+                FileHandle.standardError.write(Data("\(error.localizedDescription)\n".utf8))
+                exit(1)
+            }
+        }
+
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         app.delegate = delegate

@@ -8,9 +8,10 @@
 
 It types on its laptop while Claude is busy, waves when Claude needs your permission, celebrates when the task is done, and naps when nothing's going on.
 
-[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)](#requirements)
+[![Download](https://img.shields.io/github/v/release/mohsin2596/mac-buddy?label=download&color=D97757)](https://github.com/mohsin2596/mac-buddy/releases/latest)
+[![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)](#install)
 [![Swift](https://img.shields.io/badge/Swift-5.9%2B-F05138?logo=swift&logoColor=white)](https://swift.org)
-[![Universal](https://img.shields.io/badge/Apple%20silicon%20%2B%20Intel-universal-blue)](#requirements)
+[![Universal](https://img.shields.io/badge/Apple%20silicon%20%2B%20Intel-universal-blue)](#install)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
 
@@ -43,14 +44,30 @@ It types on its laptop while Claude is busy, waves when Claude needs your permis
 
 ## Install
 
-### Requirements
+**Requirements:** macOS 14 Sonoma or later (Apple silicon or Intel) and [Claude Code](https://claude.com/claude-code). Nothing else.
 
-- macOS 14 Sonoma or later (Apple silicon or Intel)
-- Xcode Command Line Tools (`xcode-select --install`)
-- [`jq`](https://jqlang.github.io/jq/). It's built into macOS 15+; on macOS 14, run `brew install jq`
-- [Claude Code](https://claude.com/claude-code)
+### Option 1: Download the app
 
-### One-step install
+<a href="https://github.com/mohsin2596/mac-buddy/releases/latest/download/MacBuddy.dmg"><img src="https://img.shields.io/badge/Download-MacBuddy.dmg-D97757?style=for-the-badge&logo=apple&logoColor=white" alt="Download MacBuddy.dmg"></a>
+
+1. Open `MacBuddy.dmg` and drag **Mac Buddy** into **Applications**.
+2. Open Mac Buddy from Applications.
+3. Click **Connect** when it asks to connect to Claude Code, then restart any open Claude Code sessions.
+
+> [!IMPORTANT]
+> Mac Buddy isn't notarized by Apple yet, so the first time you open it macOS says it *"could not verify"* the app. Click **Done**, then go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway**. You only have to do this once.
+
+### Option 2: One-line install (no security prompt)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/mohsin2596/mac-buddy/main/scripts/get.sh | sh
+```
+
+This downloads the latest release into `/Applications`, connects it to Claude Code and launches it. Files downloaded from Terminal aren't flagged by Gatekeeper, so there's no "Open Anyway" step. [Read the script](scripts/get.sh) first if you like.
+
+### Option 3: Build from source
+
+Needs the Xcode Command Line Tools (`xcode-select --install`).
 
 ```bash
 git clone https://github.com/mohsin2596/mac-buddy.git
@@ -58,29 +75,21 @@ cd mac-buddy
 ./install.sh
 ```
 
-The installer:
+### What "Connect" does
 
-1. Builds `MacBuddy.app` from source and copies it to `~/Applications`.
-2. Installs a small hook script at `~/.mac-buddy/hook.sh`.
-3. Adds Mac Buddy hooks to `~/.claude/settings.json`. Your existing settings and hooks are kept, and a backup is saved as `settings.json.bak-macbuddy`.
-4. Launches the buddy in the bottom-right corner of your screen.
-
-> [!NOTE]
-> Claude Code sessions that were already open before you installed may need a restart to pick up the new hooks.
+It adds a few hooks to `~/.claude/settings.json` that forward Claude Code's events to Mac Buddy. Your existing settings and hooks are kept, and a backup is saved as `settings.json.bak-macbuddy`. You can connect or disconnect at any time from the right-click menu or **Settings → Claude Code**.
 
 ### Update
 
-```bash
-git pull && ./install.sh
-```
+Download the new DMG and replace the app, or re-run the one-line installer.
 
 ### Uninstall
+
+Right-click the buddy, choose **Disconnect from Claude Code**, then quit it and drag Mac Buddy to the Trash. Or, from a clone of this repo:
 
 ```bash
 ./uninstall.sh
 ```
-
-This removes the app, the hooks (only Mac Buddy's own hooks; anything else in your settings is left alone) and `~/.mac-buddy`.
 
 ## Usage
 
@@ -142,13 +151,13 @@ Open **Settings…** from the right-click menu. A live preview on the left shows
 
 ```mermaid
 flowchart LR
-    CC[Claude Code] -- "hook events<br/>(prompt, tool use, permission, stop)" --> H["~/.mac-buddy/hook.sh"]
+    CC[Claude Code] -- "hook events<br/>(prompt, tool use, permission, stop)" --> H["~/.mac-buddy/hook.sh<br/>→ MacBuddy --hook"]
     H -- "latest event per session" --> F[("~/.mac-buddy/sessions/*.json")]
     F -- "polled every 0.4s" --> A[Mac Buddy.app]
 ```
 
 1. Claude Code runs [hooks](https://docs.claude.com/en/docs/claude-code/hooks) on `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PermissionRequest`, `Stop`, `SessionStart` and `SessionEnd`.
-2. The hook script uses `jq` to boil each event down to a small JSON file per session, containing the event, the tool, the target file or command, and the project folder. It prints nothing and never blocks Claude.
+2. A tiny shim script hands each event to the Mac Buddy binary itself (`MacBuddy --hook`), which boils it down to a small JSON file per session: the event, the tool, the target file or command, and the project folder. It takes a few milliseconds, prints nothing and never blocks Claude.
 3. The app reads those files and works out a single mood:
 
    **needs you** › **working** › **just finished** › **asleep** › **idle**
@@ -165,7 +174,9 @@ Sources/
   Model.swift           Reads hook state, decides the mood, click reactions
   Settings.swift        Persisted settings, colours, accessories
   SettingsView.swift    The Settings window
-hooks/buddy-hook.sh     The Claude Code hook
+  ClaudeHooks.swift     Hook handling plus connecting/disconnecting Claude Code
+scripts/make-release.sh   Builds MacBuddy.dmg + MacBuddy.zip for a GitHub release
+scripts/get.sh            The one-line installer
 Tools/RenderAssets.swift  Renders the README images from the real drawing code
 ```
 
@@ -176,7 +187,9 @@ Tools/RenderAssets.swift  Renders the README images from the real drawing code
 open build/MacBuddy.app
 ```
 
-No Xcode project is needed; it's plain `swiftc`. To regenerate the images in `docs/` after changing how the buddy looks:
+No Xcode project is needed; it's plain `swiftc`. To package a release, run `scripts/make-release.sh 1.2.0` and upload `dist/MacBuddy.dmg` and `dist/MacBuddy.zip` to a GitHub release with those exact names.
+
+To regenerate the images in `docs/` after changing how the buddy looks:
 
 ```bash
 scripts/render-assets.sh
@@ -199,15 +212,14 @@ In **Settings → Claude Code → Sessions**, enter part of a folder path (e.g. 
 <details>
 <summary><b>The buddy doesn't react to Claude at all.</b></summary>
 
-- Check **Settings → Claude Code → Hooks**. It should say *Installed*.
+- Check **Settings → Claude Code → Connection**. It should say *Connected*. If not, click **Connect to Claude Code**.
 - Restart any Claude Code sessions that were started before installing.
-- Make sure `jq` is available: `jq --version`.
 </details>
 
 <details>
-<summary><b>macOS says the app can't be opened.</b></summary>
+<summary><b>macOS says it "could not verify" Mac Buddy.</b></summary>
 
-Builds from source are ad-hoc signed and shouldn't be quarantined. If you copied the app from elsewhere, right-click it and choose **Open**, or run `xattr -dr com.apple.quarantine ~/Applications/MacBuddy.app`.
+The app isn't notarized yet. Go to **System Settings → Privacy & Security** and click **Open Anyway** (once). Or remove the download flag in Terminal: `xattr -dr com.apple.quarantine /Applications/MacBuddy.app`. The [one-line installer](#option-2-one-line-install-no-security-prompt) avoids this entirely.
 </details>
 
 <details>

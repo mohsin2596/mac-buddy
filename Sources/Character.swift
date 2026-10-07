@@ -52,6 +52,7 @@ struct TriangleShape: Shape {
     }
 }
 
+@MainActor
 struct TypingDots: View {
     let t: Double
     let color: Color
@@ -68,6 +69,7 @@ struct TypingDots: View {
     }
 }
 
+@MainActor
 struct BubbleView: View {
     let info: BubbleInfo
     let t: Double
@@ -122,6 +124,7 @@ struct Pose {
     var antennaGlow = 0.0
 }
 
+@MainActor
 struct CharacterView: View {
     let mood: Mood
     let t: Double
@@ -551,6 +554,7 @@ struct CharacterView: View {
 // MARK: - Buddy (bubble + character)
 
 /// The bubble-over-character stack at unscaled size. Shared by the desktop window and the settings preview.
+@MainActor
 struct BuddyStack: View {
     let bubble: BubbleInfo?
     let mood: Mood
@@ -594,6 +598,7 @@ struct BuddyStack: View {
 }
 
 /// Root view of the desktop window.
+@MainActor
 struct BuddyView: View {
     @ObservedObject var model: BuddyModel
     @ObservedObject var settings: BuddySettings
